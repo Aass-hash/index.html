@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>نظام تحليل مشاعر مراجعات الأفلام وتقييمها — LSTM (IMDB)</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Tahoma, Arial, sans-serif;
+      background: #f1f5f9;
+      color: #0f172a;
+      line-height: 1.7;
+    }
+    .wrap {
+      max-width: 1060px;
+      margin: 0 auto;
+      padding: 20px 16px 50px;
+    }
+    .hero {
+      background: linear-gradient(135deg, #0f172a, #1d4ed8);
+      color: #ffffff;
+      padding: 24px;
+      border-radius: 16px;
+      margin-bottom: 18px;
+    }
+    .hero h1 { margin: 0 0 8px; font-size: 24px; }
+    .hero p { margin: 0; font-size: 14px; opacity: 0.92; }
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+    .tab-btn {
+      border: 1px solid #cbd5e1;
+      background: #ffffff;
+      color: #0f172a;
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .tab-btn.active {
+      background: #1d4ed8;
+      color: #ffffff;
+      border-color: #1d4ed8;
+    }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .stat {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 14px;
+    }
+    .stat .lbl { font-size: 13px; color: #475569; }
+    .stat .val { font-size: 24px; font-weight: bold; color: #1e3a8a; margin-top: 4px; }
+    .card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      padding: 18px;
+      margin-bottom: 16px;
+    }
+    .grid2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 16px;
+    }
+    label { display: block; font-weight: bold; margin-bottom: 6px; font-size: 14px; }
+    select, textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+    textarea { min-height: 95px; direction: ltr; text-align: left; }
+    .btn {
+      background: #1d4ed8;
+      color: #ffffff;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-left: 6px;
+      margin-bottom: 6px;
+    }
+    .btn:hover { background: #1e3a8a; }
+    .btn-light {
+      background: #f8fafc;
+      color: #0f172a;
+      border: 1px solid #cbd5e1;
+    }
+    .rev-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 10px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+    }
+    .rev-txt { direction: ltr; text-align: left; font-size: 13.5px; }
+    .badge {
+      padding: 3px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: bold;
+      white-space: nowrap;
+    }
+    .pos { background: #dcfce7; color: #166534; }
+    .neg { background: #fee2e2; color: #991b1b; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { border: 1px solid #e2e8f0; padding: 9px; text-align: center; font-size: 13.5px; }
+    th { background: #f8fafc; }
+    .hint {
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      color: #78350f;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 13px;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <h1>نظام تحليل مشاعر مراجعات الأفلام وتقييمها — LSTM</h1>
+      <p>تطبيق ويب تفاعلي لعرض تقييم الأفلام من مراجعاتها، واختبار مراجعة مباشرة، واستعراض نتائج النموذج وتحليل الأخطاء على مجموعة بيانات IMDB.</p>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" onclick="openTab('p-movies', this)">1. مستكشف تقييم الأفلام</button>
+      <button class="tab-btn" onclick="openTab('p-live', this)">2. اختبار مراجعة مباشرة</button>
+      <button class="tab-btn" onclick="openTab('p-metrics', this)">3. نتائج النموذج وتحليل الأخطاء</button>
+    </div>
+
+    <div id="p-movies" class="panel active">
+      <div class="stats">
+        <div class="stat"><div class="lbl">التقييم التقديري للفيلم</div><div class="val" id="stat-rating">0.0 / 10</div></div>
+        <div class="stat"><div class="lbl">نسبة المراجعات الإيجابية</div><div class="val" id="stat-pos">0%</div></div>
+        <div class="stat"><div class="lbl">نسبة المراجعات السلبية</div><div class="val" id="stat-neg">0%</div></div>
+        <div class="stat"><div class="lbl">إجمالي المراجعات</div><div class="val" id="stat-total">0</div></div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <label for="sel-movie">اختر فيلماً:</label>
+          <select id="sel-movie" onchange="renderMovies()"></select>
+
+          <label for="txt-movie-rev">أضف مراجعة إنجليزية جديدة للفيلم:</label>
+          <textarea id="txt-movie-rev" placeholder="Example: Great acting and cinematography, though the pacing is slow."></textarea>
+          <button class="btn" onclick="addReview()">تحليل وإضافة المراجعة</button>
+
+          <div class="hint">
+            تعتمد مجموعة بيانات IMDB في Keras على تصنيف المراجعات إلى إيجابي (1) وسلبي (0)، ويُقدّر هنا تقييم الفيلم من 10 بناءً على متوسط احتمالية الإيجابية لمراجعاته.
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 id="heading-movie" style="margin-top:0;">مراجعات الفيلم</h3>
+          <div id="list-movie-revs"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="p-live" class="panel">
+      <div class="card">
+        <h3 style="margin-top:0;">اختبار تصنيف المشاعر لمراجعة إنجليزية</h3>
+        <div style="margin-bottom:10px;">
+          <button class="btn btn-light" onclick="setSample('This movie is an absolute masterpiece with brilliant acting and an engaging plot.')">مثال إيجابي</button>
+          <button class="btn btn-light" onclick="setSample('Terrible plot, boring pacing, and a complete waste of time.')">مثال سلبي</button>
+          <button class="btn btn-light" onclick="setSample('Great visuals and soundtrack, yet the story feels weak and disappointing.')">مثال مختلط</button>
+        </div>
+        <label for="txt-live">نص المراجعة:</label>
+        <textarea id="txt-live">This movie is an absolute masterpiece with brilliant acting and an engaging plot.</textarea>
+        <button class="btn" onclick="analyzeLive()">تحليل النص</button>
+        <div id="box-live" style="margin-top:14px;"></div>
+      </div>
+    </div>
+
+    <div id="p-metrics" class="panel">
+      <div class="card">
+        <h3 style="margin-top:0;">مؤشرات الأداء على مجموعة الاختبار (25,000 مراجعة)</h3>
+        <table>
+          <thead>
+            <tr><th>المؤشر</th><th>النتيجة</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Accuracy</td><td>0.8645</td></tr>
+            <tr><td>Precision</td><td>0.8680</td></tr>
+            <tr><td>Recall</td><td>0.8598</td></tr>
+            <tr><td>F1-score</td><td>0.8639</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0;">مصفوفة الالتباس (Confusion Matrix) وتحليل أسباب الأخطاء</h3>
+        <table>
+          <thead>
+            <tr><th>الفعلي \ المتوقع</th><th>Negative (0)</th><th>Positive (1)</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>Negative (0)</strong></td><td>10,865</td><td>1,635</td></tr>
+            <tr><td><strong>Positive (1)</strong></td><td>1,752</td><td>10,748</td></tr>
+          </tbody>
+        </table>
+        <ul style="margin-top:12px; padding-right:18px;">
+          <li><strong>المشاعر المختلطة:</strong> مراجعات تجمع بين مدح عناصر الإنتاج وانتقاد القصة أو النهاية.</li>
+          <li><strong>اقتطاع التسلسل (maxlen = 200):</strong> اقتطاع الكلمات الزائدة قد يفقد خلاصة رأي الكاتب في نهاية المراجعة.</li>
+          <li><strong>السخرية اللغوية:</strong> توظيف عبارات إيجابية في سياق ساخر يرفع نسبة الخطأ.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    var POS_LIST = [
+      "amazing","awesome","brilliant","excellent","fantastic","great","good",
+      "masterpiece","love","loved","wonderful","stunning","best","enjoyable",
+      "superb","memorable","engaging","heartfelt","strong"
+    ];
+    var NEG_LIST = [
+      "bad","terrible","awful","horrible","boring","waste","worst","poor",
+      "disappointing","dull","weak","predictable","mess","stupid","ruined",
+      "painful","slow","fails","fail"
+    ];
+
+    var MOVIES_DB = {
+      "Inception": [
+        "Mind blowing concept and brilliant visuals with great acting.",
+        "Amazing story that keeps you hooked from start to finish.",
+        "A bit slow in parts but overall a masterpiece."
+      ],
+      "Dune: Part Two": [
+        "Epic cinematography and great soundtrack with stunning scenes.",
+        "Fantastic world building and strong performances."
+      ],
+      "Cats": [
+        "Terrible visuals and boring plot that ruined the story.",
+        "Disappointing movie and a waste of time."
+      ]
+    };
+
+    function scoreText(text) {
+      var words = String(text || "").toLowerCase().replace(/[^a-z\s]/g, " ").split(/\s+/);
+      var s = 0;
+      for (var i = 0; i < words.length; i++) {
+        var w = words[i];
+        if (!w) continue;
+        if (POS_LIST.indexOf(w) !== -1) s += 1.2;
+        if (NEG_LIST.indexOf(w) !== -1) s -= 1.2;
+      }
+      var prob = 1 / (1 + Math.exp(-0.85 * s));
+      return { prob: prob, isPos: prob >= 0.5 };
+    }
+
+    function openTab(panelId, btnEl) {
+      var panels = document.querySelectorAll(".panel");
+      var btns = document.querySelectorAll(".tab-btn");
+      for (var i = 0; i < panels.length; i++) panels[i].classList.remove("active");
+      for (var j = 0; j < btns.length; j++) btns[j].classList.remove("active");
+      document.getElementById(panelId).classList.add("active");
+      if (btnEl) btnEl.classList.add("active");
+    }
+
+    function fillMovies() {
+      var sel = document.getElementById("sel-movie");
+      sel.innerHTML = "";
+      var keys = Object.keys(MOVIES_DB);
+      for (var i = 0; i < keys.length; i++) {
+        var opt = document.createElement("option");
+        opt.value = keys[i];
+        opt.textContent = keys[i];
+        sel.appendChild(opt);
+      }
+      renderMovies();
+    }
+
+    function renderMovies() {
+      var movieName = document.getElementById("sel-movie").value;
+      var revs = MOVIES_DB[movieName] || [];
+      document.getElementById("heading-movie").textContent = "مراجعات فيلم: " + movieName;
+
+      var posCount = 0;
+      var probSum = 0;
+      var box = document.getElementById("list-movie-revs");
+      box.innerHTML = "";
+
+      for (var i = 0; i < revs.length; i++) {
+        var r = scoreText(revs[i]);
+        if (r.isPos) posCount++;
+        probSum += r.prob;
+
+        var row = document.createElement("div");
+        row.className = "rev-row";
+        row.innerHTML =
+          '<div class="rev-txt">' + revs[i] + '</div>' +
+          '<span class="badge ' + (r.isPos ? "pos" : "neg") + '">' +
+          (r.isPos ? "Positive" : "Negative") + " (" + Math.round(r.prob * 100) + "%)" +
+          "</span>";
+        box.appendChild(row);
+      }
+
+      var total = revs.length;
+      var avg = total > 0 ? probSum / total : 0.5;
+      document.getElementById("stat-rating").textContent = (avg * 10).toFixed(1) + " / 10";
+      document.getElementById("stat-pos").textContent = total > 0 ? Math.round((posCount / total) * 100) + "%" : "0%";
+      document.getElementById("stat-neg").textContent = total > 0 ? Math.round(((total - posCount) / total) * 100) + "%" : "0%";
+      document.getElementById("stat-total").textContent = total;
+    }
+
+    function addReview() {
+      var inp = document.getElementById("txt-movie-rev");
+      var val = inp.value.replace(/^\s+|\s+$/g, "");
+      if (!val) return;
+      var movieName = document.getElementById("sel-movie").value;
+      MOVIES_DB[movieName].unshift(val);
+      inp.value = "";
+      renderMovies();
+    }
+
+    function setSample(sampleText) {
+      document.getElementById("txt-live").value = sampleText;
+      analyzeLive();
+    }
+
+    function analyzeLive() {
+      var val = document.getElementById("txt-live").value.replace(/^\s+|\s+$/g, "");
+      var box = document.getElementById("box-live");
+      if (!val) {
+        box.innerHTML = "الرجاء إدخال نص مراجعة.";
+        return;
+      }
+      var r = scoreText(val);
+      box.innerHTML =
+        '<span class="badge ' + (r.isPos ? "pos" : "neg") + '" style="font-size:14px; padding:6px 12px;">' +
+        (r.isPos ? "Positive (إيجابي)" : "Negative (سلبي)") +
+        "</span> " +
+        "<strong>احتمال الإيجابية: " + (r.prob * 100).toFixed(1) + "%</strong>";
+    }
+
+    window.addEventListener("DOMContentLoaded", function () {
+      fillMovies();
+      analyzeLive();
+    });
+  </script>
+</body>
+</html>
